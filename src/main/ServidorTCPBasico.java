@@ -3,7 +3,13 @@ package main;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketAddress;
 import java.net.UnknownHostException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import config.ServerConfig;
 
@@ -11,6 +17,12 @@ public class ServidorTCPBasico {
 
 	private int porta;
 	public Socket cliente;
+	public ServerSocket servidor;
+
+	public static ArrayList<ServerConfig> clientes = new ArrayList<>();
+	public Map<SocketAddress, String> contadorClientes = new HashMap<SocketAddress, String>();
+
+	static ExecutorService pool = Executors.newFixedThreadPool(4);
 
 	public static void main(String[] args) throws IOException {
 
@@ -24,18 +36,21 @@ public class ServidorTCPBasico {
 	}
 
 	public void executa() throws IOException {
-		ServerSocket servidor = new ServerSocket(this.porta);
+		this.servidor = new ServerSocket(this.porta);
 		System.out.println("Porta 12345 aberta!");
 
 		try {
 			while (true) {
+
 				// aceita um cliente
 				this.cliente = servidor.accept();
 				System.out.println("Nova conexão com o cliente " + cliente.getInetAddress().getHostAddress());
 
 				// cria tratador de cliente numa nova thread
 				ServerConfig server = new ServerConfig(cliente, this);
-				new Thread(server).start();
+				clientes.add(server);
+
+				pool.execute(server);
 			}
 		} catch (UnknownHostException ex) {
 			ex.printStackTrace();

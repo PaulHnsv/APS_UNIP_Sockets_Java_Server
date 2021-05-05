@@ -6,41 +6,54 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.Socket;
+import java.net.SocketAddress;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.List;
 
 import main.ServidorTCPBasico;
 
 public class ServerConfig implements Runnable {
 
-	private List<ServerConfig> clientes = new ArrayList<ServerConfig>();;
-
 	private Socket cliente;
+	private ServidorTCPBasico server;
+
 	private DataInputStream in;
 	private DataOutputStream out;
+
+	private SocketAddress host;
+	private String nome;
 	private String boasVindas;
+	private String mensagemSair;
 
 	public ServerConfig(Socket cliente, ServidorTCPBasico servidor) {
-		// indica que determinado client entrou no chat
-		this.boasVindas = "Cliente " + cliente.getInetAddress().getHostAddress() + " entrou no chat." + "\n";
 
 		// lógica do envio e recebimento das mensagens por parte do server
 		try {
+
 			this.cliente = cliente;
-			clientes.add(this);
+			this.server = servidor;
 
 			in = new DataInputStream(new BufferedInputStream(cliente.getInputStream()));
 			out = new DataOutputStream(new BufferedOutputStream(cliente.getOutputStream()));
 
+			this.nome = in.readUTF();
+			this.host = cliente.getLocalSocketAddress();
+
+			// Atualiza o cliente existente ou adiciona um novo.
+			if (server.contadorClientes.get(host) == null) {
+				server.contadorClientes.put(host, nome);
+			}
+
+			// indica que determinado client entrou no chat
+			this.boasVindas = "Cliente " + server.contadorClientes.get(host).toString() + " entrou no chat." + "\n";
+
 			distribuiMensagem(this.boasVindas);
 
-			// synchronized (out) {
-			// out.writeUTF("Bem vindo ao chat " + cliente.getInetAddress().getHostAddress()
-			// + "\n");
-			// }
-			// out.flush();
+			synchronized (out) {
+				out.writeUTF("Bem vindo ao chat " + server.contadorClientes.get(host).toString() + "\n");
+			}
+			out.flush();
+
 		} catch (IOException ex) {
 			ex.printStackTrace();
 		}
@@ -53,10 +66,11 @@ public class ServerConfig implements Runnable {
 				boolean sair = false;
 				while (!sair) {
 					String texto = in.readUTF();
+					this.mensagemSair = "Cliente " + server.contadorClientes.get(host).toString() + " saiu do chat.";
 					if ("SAIR".equals(texto)) {
 						sair = true;
-						clientes.remove(this);
-						distribuiMensagem("Cliente " + cliente.getInetAddress().getHostAddress() + " saiu do chat.");
+						ServidorTCPBasico.clientes.remove(this);
+						distribuiMensagem(mensagemSair);
 					} else {
 						distribuiMensagem(texto);
 					}
@@ -85,25 +99,22 @@ public class ServerConfig implements Runnable {
 		String horaFormatada = formatterHora.format(dataAgora);
 
 		System.out.println("Enviar msg: " + msg);
-		synchronized (clientes) {
-			for (ServerConfig cliente : this.clientes) {
-
-				try {
-					synchronized (cliente.out) {
-						if (!msg.equals(boasVindas)) {
-							cliente.out.writeUTF(msg + " enviado às: " + horaFormatada + " por: "
-									+ this.cliente.getInetAddress().getHostAddress() + "\n");
-						} else {
-							cliente.out.writeUTF(msg);
-						}
-					}
-					cliente.out.flush();
-
-				} catch (IOException e) {
-					e.printStackTrace();
+		for (ServerConfig cliente : ServidorTCPBasico.clientes) {
+			try {
+				if (msg.equals(boasVindas)) {
+					cliente.out.writeUTF(msg);
+				} else if (msg.equals(mensagemSair)) {
+					cliente.out.writeUTF(msg + "\n");
+				} else {
+					cliente.out.writeUTF(msg + " Enviado às: " + horaFormatada + " Por: "
+							+ server.contadorClientes.get(host).toString() + "\n");
 				}
+				cliente.out.flush();
 
+			} catch (IOException e) {
+				e.printStackTrace();
 			}
+
 		}
 
 	}
